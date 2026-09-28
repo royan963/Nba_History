@@ -126,9 +126,18 @@ career['rpg'] = career['trb'] / career['g'].replace(0, np.nan)
 career['apg'] = career['ast'] / career['g'].replace(0, np.nan)
 career = career.merge(info[['player_id', 'pos', 'hof', 'ht_in_in', 'wt']], on='player_id', how='left')
 
+# Advanced stats (PER, TS%, WS, BPM, VORP ...). One row per player-season.
+adv = dedupe_multi(csv('Advanced.csv'))
+adv = adv[adv['lg'].isin(LEAGUES)]
+all_star = csv('All-Star Selections.csv')
+all_star = all_star[all_star['lg'] == 'NBA']
+career = career.merge(adv.groupby('player_id')[['ws', 'vorp']].sum(min_count=1).reset_index(), on='player_id', how='left')
+career = career.merge(all_star.groupby('player_id').size().rename('all_star').reset_index(), on='player_id', how='left')
+career['all_star'] = career['all_star'].fillna(0)
+
 career_cols = ['player_id', 'player', 'pos', 'hof', 'ht_in_in', 'wt', 'seasons_played', 'first_season',
                'last_season', 'g', 'pts', 'trb', 'ast', 'stl', 'blk', 'fg', 'fga', 'x3p', 'x3pa',
-               'ft', 'fta', 'ppg', 'rpg', 'apg']
+               'ft', 'fta', 'ppg', 'rpg', 'apg', 'ws', 'vorp', 'all_star']
 career_rows = []
 for row in career.itertuples(index=False):
     d = row._asdict()
@@ -138,6 +147,7 @@ for row in career.itertuples(index=False):
         to_int(d['last_season']), to_int(d['g']), to_int(d['pts']), to_int(d['trb']), to_int(d['ast']),
         to_int(d['stl']), to_int(d['blk']), to_int(d['fg']), to_int(d['fga']), to_int(d['x3p']),
         to_int(d['x3pa']), to_int(d['ft']), to_int(d['fta']), rnd(d['ppg']), rnd(d['rpg']), rnd(d['apg']),
+        rnd(d['ws']), rnd(d['vorp']), to_int(d['all_star']),
     ])
 dump({'columns': career_cols, 'rows': career_rows}, 'player_career')
 
@@ -227,3 +237,94 @@ eos = eos[eos['lg'].isin(LEAGUES)]
 dump({'columns': ['season', 'team_type', 'team_number', 'player_id'],
       'rows': [[int(r.season), r.type, r.number_tm, r.player_id] for r in eos.itertuples(index=False)]},
      'player_eos_teams')
+
+# ---------------------------------------------------------------- advanced stats
+adv_map = [('per', 'per', 1), ('ts_pct', 'ts_percent', 3), ('usg_pct', 'usg_percent', 1),
+           ('ws', 'ws', 1), ('ws_48', 'ws_48', 3), ('obpm', 'obpm', 1), ('dbpm', 'dbpm', 1),
+           ('bpm', 'bpm', 1), ('vorp', 'vorp', 1)]
+dump({'columns': ['season', 'player_id'] + [c for c, _, _ in adv_map], 'rows': pack(adv, adv_map)}, 'player_advanced')
+
+# ---------------------------------------------------------------- per 100 possessions (1974+)
+p100 = dedupe_multi(csv('Per 100 Poss.csv'))
+p100 = p100[p100['lg'].isin(LEAGUES) & p100['pts_per_100_poss'].notna()]
+p100_map = [(k, f'{k}_per_100_poss', 1) for k in ('pts', 'trb', 'ast', 'stl', 'blk', 'tov')]
+p100_map += [('o_rtg', 'o_rtg', 0), ('d_rtg', 'd_rtg', 0)]
+dump({'columns': ['season', 'player_id'] + [c for c, _, _ in p100_map], 'rows': pack(p100, p100_map)}, 'player_per100')
+
+# ---------------------------------------------------------------- All-Star selections + draft
+dump({'columns': ['season', 'player_id', 'replaced'],
+      'rows': [[int(r.season), r.player_id, bool(r.replaced)] for r in all_star.itertuples(index=False)]}, 'all_star')
+dr = csv('Draft Pick History.csv')
+dr = dr[dr['lg'].isin(LEAGUES) & dr['player_id'].isin(career['player_id'])]   # players who reached the NBA
+dump({'columns': ['season', 'player_id', 'overall_pick', 'round', 'tm', 'college'],
+      'rows': [[int(r.season), r.player_id, to_int(r.overall_pick), to_int(r.round), r.tm,
+                None if isnan(r.college) else r.college] for r in dr.itertuples(index=False)]}, 'draft')
+
+# ---------------------------------------------------------------- league environment (era adjustment)
+# League-wide rates per season, used to express a player's stats relative to
+# the league average (index, 100 = average). Minutes are estimated as
+# 240 per team-game because team minutes weren't recorded in early seasons.
+tt = csv('Team Totals.csv')
+tt = tt[tt['lg'].isin(LEAGUES) & (tt['team'] != 'League Average')]
+env_cols = ['season', 'pace', 'pts36', 'trb36', 'ast36', 'stl36', 'blk36', 'tov36',
+            'ts_pct', 'fg_pct', 'x3p_pct', 'ft_pct', 'x3p_ar']
+pace_by_season = {e['season']: e['pace'] for e in era}
+env_rows = []
+for season, g in tt.groupby('season'):
+    s = g[['g', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov', 'fg', 'fga', 'x3p', 'x3pa', 'ft', 'fta']].sum()
+    mins = 240.0 * s['g']
+    rate = lambda k: None if s[k] <= 0 else s[k] / mins * 36
+    ts = s['pts'] / (2 * (s['fga'] + 0.44 * s['fta'])) if s['fga'] > 0 else None
+    env_rows.append([int(season), rnd(pace_by_season.get(int(season)), 1),
+                     *[rnd(rate(k), 3) for k in ('pts', 'trb', 'ast', 'stl', 'blk', 'tov')],
+                     rnd(ts, 4), rnd(s['fg'] / s['fga'], 4) if s['fga'] else None,
+                     rnd(s['x3p'] / s['x3pa'], 4) if s['x3pa'] else None,
+                     rnd(s['ft'] / s['fta'], 4) if s['fta'] else None,
+                     rnd(s['x3pa'] / s['fga'], 4) if s['x3pa'] else None])
+dump({'columns': env_cols, 'rows': env_rows}, 'league_env')
+env = pd.DataFrame(env_rows, columns=env_cols).set_index('season')
+
+# ---------------------------------------------------------------- similar players
+# Career style fingerprint, relative to each season's league so eras are
+# comparable: per-36 scoring/rebounding/playmaking/defense indices, shooting
+# efficiency index, usage, 3-point tendency (vs league) and height.
+# Minutes-weighted across seasons; only players with 3,000+ tracked minutes.
+combined = dedupe_multi(ppg)   # one row per player-season (traded players: combined row)
+combined = combined.merge(adv[['player_id', 'season', 'ts_percent', 'usg_percent', 'x3p_ar']],
+                          on=['player_id', 'season'], how='left')
+combined = combined.join(env.add_prefix('lg_'), on='season')
+combined = combined[combined['mp_per_game'].notna() & (combined['mp_per_game'] > 0)].copy()
+combined['minutes'] = combined['mp_per_game'] * combined['g']
+for k in ('pts', 'trb', 'ast', 'stl', 'blk'):
+    combined[f'{k}_idx'] = combined[f'{k}_per_game'] / combined['mp_per_game'] * 36 / combined[f'lg_{k}36']
+combined['ts_idx'] = combined['ts_percent'] / combined['lg_ts_pct']
+combined['x3p_ar_diff'] = np.where(combined['season'] >= 1980, combined['x3p_ar'] - combined['lg_x3p_ar'], np.nan)
+FEATURES = [('pts_idx', 1.2), ('trb_idx', 1.0), ('ast_idx', 1.0), ('stl_idx', 0.7), ('blk_idx', 0.7),
+            ('ts_idx', 1.0), ('usg_percent', 0.8), ('x3p_ar_diff', 0.7)]
+def wavg(g, col):
+    ok = g[col].notna() & np.isfinite(g[col])
+    return np.average(g.loc[ok, col], weights=g.loc[ok, 'minutes']) if g.loc[ok, 'minutes'].sum() > 500 else np.nan
+feat = combined.groupby('player_id').apply(
+    lambda g: pd.Series({**{c: wavg(g, c) for c, _ in FEATURES}, 'minutes': g['minutes'].sum()}),
+    include_groups=False)
+feat = feat[feat['minutes'] >= 3000].join(info.set_index('player_id')['ht_in_in'])
+feat = feat.join(career.set_index('player_id')['first_season'])
+cols = [c for c, _ in FEATURES] + ['ht_in_in']
+weights = np.array([w for _, w in FEATURES] + [1.0])
+X = feat[cols].to_numpy(dtype=float)
+Z = (X - np.nanmean(X, axis=0)) / np.nanstd(X, axis=0)
+M = ~np.isnan(Z)
+Z0 = np.where(M, Z, 0.0)
+ids = feat.index.to_list()
+neighbors = {}
+for i, pid in enumerate(ids):
+    shared = M & M[i]
+    wsum = (shared * weights).sum(axis=1)
+    d2 = ((Z0 - Z0[i]) ** 2 * shared * weights).sum(axis=1) / np.where(wsum > 0, wsum, np.nan)
+    d2[shared.sum(axis=1) < 5] = np.nan
+    d2[i] = np.nan
+    order = np.argsort(np.where(np.isnan(d2), np.inf, d2))[:15]
+    neighbors[pid] = [[ids[j], int(round(100 * np.exp(-d2[j])))] for j in order if np.isfinite(d2[j])]
+dump({'features': cols,
+      'players': {pid: [None if np.isnan(v) else round(float(v), 2) for v in X[i]] for i, pid in enumerate(ids)},
+      'neighbors': neighbors}, 'similar_players')

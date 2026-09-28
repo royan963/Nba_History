@@ -1496,3 +1496,86 @@ select:focus, input:focus {
   border-color: var(--amber-dim);
   color: var(--amber);
 }
+
+/* ---------- Compare: stat basis / view controls ---------- */
+.cmp-control-row { margin-top: 16px; }
+.era-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--chalk-dim);
+  background: rgba(74, 143, 184, 0.08);
+  border-left: 2px solid var(--court-blue);
+  padding: 8px 12px;
+  border-radius: 0 4px 4px 0;
+}
+.era-note b { color: var(--chalk); font-weight: 600; }
+.cmp-stat-subhead {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--amber);
+  margin: 18px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.cmp-stat-subhead span {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--chalk-dim);
+  margin-left: 8px;
+}
+.cmp-card-context {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--chalk-dim);
+  margin-top: 10px;
+}
+.cmp-card-honors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.allstar-pill { border-color: rgba(74, 143, 184, 0.6) !important; }
+
+/* ---------- Similar players ---------- */
+.similar-fingerprint {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.fp-cell { background: var(--panel-2); padding: 11px 12px; }
+.fp-cell .v { font-family: var(--font-mono); font-size: 14px; color: var(--wood-light); font-weight: 600; }
+.fp-cell .l { font-family: var(--font-mono); font-size: 10px; color: var(--chalk-dim); text-transform: uppercase; margin-top: 3px; }
+.similar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.similar-row:last-child { border-bottom: none; }
+.similar-score {
+  position: relative;
+  height: 22px;
+  background: var(--panel-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.similar-score-fill { height: 100%; background: linear-gradient(90deg, var(--wood-dark), var(--amber)); }
+.similar-score span {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--chalk);
+}
+.similar-name { font-size: 14px; font-weight: 500; }
+.name-link { cursor: pointer; color: var(--chalk); }
+.name-link:hover { color: var(--amber); }
+.similar-meta { font-family: var(--font-mono); font-size: 11px; color: var(--chalk-dim); margin-top: 3px; }
+@media (max-width: 720px) {
+  .similar-row { grid-template-columns: 70px 1fr; }
+  .similar-compare { grid-column: 1 / -1; justify-self: start; }
+}

@@ -11,3 +11,4 @@ node_modules/
 
 # Raw Basketball-Reference CSVs (unzip nba.zip into data/raw/ to regenerate data)
 data/raw/
+data/.backup/
